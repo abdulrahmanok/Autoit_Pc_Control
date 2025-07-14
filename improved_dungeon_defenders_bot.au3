@@ -80,6 +80,9 @@ EndFunc
 Func BackGround_Pix($X, $Y, $Target_Color = 0x99604A, $IsTrue = False)
     Local $handle = WinGetHandle($hWnd)
     If $handle = 0 Then
+        If $debugMode Then
+            LogToConsole("Error: Cannot get window handle")
+        EndIf
         Return False
     EndIf
 
@@ -91,22 +94,45 @@ Func BackGround_Pix($X, $Y, $Target_Color = 0x99604A, $IsTrue = False)
     ; Read pixel color with enhanced error handling
     Local $detectedColor = MemoryReadPixel($scaledX, $scaledY, $handle)
     If $detectedColor = 0 Then
-        Return False
+        ; Try alternative method
+        $detectedColor = AlternativePixelRead($scaledX, $scaledY, $handle)
+        If $detectedColor = 0 Then
+            If $debugMode Then
+                LogToConsole("Error: Failed to read pixel at " & $scaledX & "," & $scaledY & " with both methods")
+            EndIf
+            Return False
+        EndIf
     EndIf
 
     Global $x2 = $scaledX
     Global $y2 = $scaledY
 
+    ; Debug information
+    If $debugMode Then
+        LogToConsole("Pixel at " & $scaledX & "," & $scaledY & " - Detected: " & $detectedColor & " Target: " & $Target_Color)
+    EndIf
+
     ; Enhanced color matching with tolerance
     If ColorMatches($detectedColor, $Target_Color, $colorTolerance) Then
+        If $debugMode Then
+            LogToConsole("✅ Color match found at " & $scaledX & "," & $scaledY)
+        EndIf
         _ScreenCoord_To_Client()
         Return True
     Else
+        If $debugMode Then
+            LogToConsole("❌ Color mismatch at " & $scaledX & "," & $scaledY & " - Detected: " & $detectedColor & " Target: " & $Target_Color)
+        EndIf
         Return False
     EndIf
 EndFunc
 
 Func ColorMatches($color1, $color2, $tolerance)
+    ; Handle exact match first
+    If $color1 = $color2 Then
+        Return True
+    EndIf
+    
     ; Extract RGB components
     Local $r1 = BitAND($color1, 0xFF0000) / 0x10000
     Local $g1 = BitAND($color1, 0x00FF00) / 0x100
@@ -123,18 +149,32 @@ Func ColorMatches($color1, $color2, $tolerance)
     
     Local $toleranceValue = BitAND($tolerance, 0xFF)
     
-    Return ($diffR <= $toleranceValue) And ($diffG <= $toleranceValue) And ($diffB <= $toleranceValue)
+    ; More flexible tolerance for debugging
+    If $debugMode Then
+        $toleranceValue = 32 ; Increase tolerance in debug mode
+    EndIf
+    
+    Local $match = ($diffR <= $toleranceValue) And ($diffG <= $toleranceValue) And ($diffB <= $toleranceValue)
+    
+    If $debugMode Then
+        LogToConsole("Color comparison: R(" & $r1 & " vs " & $r2 & ") G(" & $g1 & " vs " & $g2 & ") B(" & $b1 & " vs " & $b2 & ") Tolerance: " & $toleranceValue & " Match: " & ($match ? "Yes" : "No"))
+    EndIf
+    
+    Return $match
 EndFunc
 
 Func MemoryReadPixel($X, $Y, $handle)
     ; Enhanced pixel reading with multiple attempts
-    Local $maxAttempts = 3
+    Local $maxAttempts = 5
     Local $attempt = 0
     
     While $attempt < $maxAttempts
         Local $hDC = _WinAPI_GetWindowDC($handle)
         If $hDC = 0 Then
-            Sleep(10)
+            If $debugMode Then
+                LogToConsole("Attempt " & ($attempt + 1) & ": Failed to get DC")
+            EndIf
+            Sleep(50)
             $attempt += 1
             ContinueLoop
         EndIf
@@ -143,17 +183,60 @@ Func MemoryReadPixel($X, $Y, $handle)
         _WinAPI_ReleaseDC($handle, $hDC)
         
         If @error Or $Color2[0] = -1 Then
-            Sleep(10)
+            If $debugMode Then
+                LogToConsole("Attempt " & ($attempt + 1) & ": GetPixel failed or returned -1")
+            EndIf
+            Sleep(50)
             $attempt += 1
             ContinueLoop
         EndIf
         
+        ; Convert color format properly
         Global $sColor = Hex($Color2[0], 6)
         Local $result = Hex("0x" & StringRight($sColor, 2) & StringMid($sColor, 3, 2) & StringLeft($sColor, 2))
+        
+        If $debugMode And $attempt = 0 Then
+            LogToConsole("Raw color: " & $Color2[0] & " Hex: " & $sColor & " Processed: " & $result)
+        EndIf
+        
         Return $result
     WEnd
     
+    If $debugMode Then
+        LogToConsole("Failed to read pixel after " & $maxAttempts & " attempts")
+    EndIf
     Return 0
+EndFunc
+
+Func AlternativePixelRead($X, $Y, $handle)
+    ; Alternative method using different approach
+    Local $hDC = _WinAPI_GetWindowDC($handle)
+    If $hDC = 0 Then
+        Return 0
+    EndIf
+    
+    ; Try using different coordinate mode
+    Local $Color2 = DllCall("gdi32.dll", "int", "GetPixel", "int", $hDC, "int", $X, "int", $Y)
+    _WinAPI_ReleaseDC($handle, $hDC)
+    
+    If @error Or $Color2[0] = -1 Then
+        Return 0
+    EndIf
+    
+    ; Convert to RGB format
+    Local $color = $Color2[0]
+    Local $r = BitAND($color, 0xFF)
+    Local $g = BitAND($color, 0xFF00) / 0x100
+    Local $b = BitAND($color, 0xFF0000) / 0x10000
+    
+    ; Convert to hex format
+    Local $result = "0x" & Hex($r, 2) & Hex($g, 2) & Hex($b, 2)
+    
+    If $debugMode Then
+        LogToConsole("Alternative method: Raw=" & $color & " RGB=(" & $r & "," & $g & "," & $b & ") Hex=" & $result)
+    EndIf
+    
+    Return $result
 EndFunc
 
 ; ==============================================================================
@@ -346,6 +429,7 @@ EndFunc
 ; ==============================================================================
 
 UpdateTooltip("🚀 Dungeon Defenders 2 Friend Monitor Started", "SUCCESS")
+UpdateTooltip("🔧 Hotkeys: F5=Pause, F7=Test Pixels, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
 UpdateTooltip("🔧 Checking game window...", "INFO")
 
 ; Verify window exists and initialize
@@ -436,6 +520,7 @@ HotKeySet("{F8}", "ManualTrigger")
 HotKeySet("{F5}", "TogglePause")
 HotKeySet("{F9}", "ToggleDebugMode")
 HotKeySet("{F10}", "ShowStats")
+HotKeySet("{F7}", "TestPixelDetection")
 
 ; ==============================================================================
 ; Enhanced Functions (keeping original functionality)
@@ -475,6 +560,41 @@ Func ShowStats()
                      "Scaling: X=" & Round($scaleX, 3) & ", Y=" & Round($scaleY, 3)
 
     MsgBox(64, "Bot Statistics", $statsMsg)
+EndFunc
+
+Func TestPixelDetection()
+    ; Test pixel detection at common points
+    Local $testPoints[6][3] = [
+        [101, 261, 0x00D41E],  ; Friend ready point 1
+        [94, 259, 0x00C81A],   ; Friend ready point 2
+        [517, 313, 0xFFD800],  ; Game end point 1
+        [239, 297, 0xFBD400],  ; Game end point 2
+        [1018, 818, 0xD7D7D7], ; Lose game point
+        [964, 767, 0x1F1826]   ; Ad detection point
+    ]
+    
+    Local $testResults = "🔍 PIXEL DETECTION TEST" & @CRLF & @CRLF
+    
+    For $i = 0 To UBound($testPoints) - 1
+        Local $x = $testPoints[$i][0]
+        Local $y = $testPoints[$i][1]
+        Local $targetColor = $testPoints[$i][2]
+        
+        Local $scaledX = Round($x * $scaleX)
+        Local $scaledY = Round($y * $scaleY)
+        
+        Local $handle = WinGetHandle($hWnd)
+        Local $detectedColor = MemoryReadPixel($scaledX, $scaledY, $handle)
+        
+        $testResults &= "Point " & ($i + 1) & " (" & $x & "," & $y & "):" & @CRLF
+        $testResults &= "  Scaled: (" & $scaledX & "," & $scaledY & ")" & @CRLF
+        $testResults &= "  Target: " & $targetColor & @CRLF
+        $testResults &= "  Detected: " & $detectedColor & @CRLF
+        $testResults &= "  Match: " & (ColorMatches($detectedColor, $targetColor, $colorTolerance) ? "✅" : "❌") & @CRLF & @CRLF
+    Next
+    
+    MsgBox(64, "Pixel Detection Test", $testResults)
+    LogToConsole("Pixel detection test completed")
 EndFunc
 
 Func _Exit()
