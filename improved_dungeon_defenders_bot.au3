@@ -321,20 +321,35 @@ EndFunc
 Func FriendStatus()
     Local $friendReadyDetected = False
 
-    ; Multiple detection points for friend ready status
-    Local $readyPoints[4][3]
+    ; Multiple detection points for friend ready status with color variations
+    Local $readyPoints[8][3]
+    ; Original points
     $readyPoints[0][0] = 101
     $readyPoints[0][1] = 261
-    $readyPoints[0][2] = 0x00D41E
+    $readyPoints[0][2] = 0x00DA1E
     $readyPoints[1][0] = 94
     $readyPoints[1][1] = 259
     $readyPoints[1][2] = 0x00C81A
+    ; Scaled points
     $readyPoints[2][0] = Round(101 * $scaleX)
     $readyPoints[2][1] = Round(261 * $scaleY)
-    $readyPoints[2][2] = 0x00D41E
+    $readyPoints[2][2] = 0x00DA1E
     $readyPoints[3][0] = Round(94 * $scaleX)
     $readyPoints[3][1] = Round(259 * $scaleY)
     $readyPoints[3][2] = 0x00C81A
+    ; Color variations for 0x00DA1E
+    $readyPoints[4][0] = 101
+    $readyPoints[4][1] = 261
+    $readyPoints[4][2] = 0x00D41E  ; Slightly different shade
+    $readyPoints[5][0] = 101
+    $readyPoints[5][1] = 261
+    $readyPoints[5][2] = 0x00D91E  ; Another variation
+    $readyPoints[6][0] = 101
+    $readyPoints[6][1] = 261
+    $readyPoints[6][2] = 0x00DB1E  ; Another variation
+    $readyPoints[7][0] = 101
+    $readyPoints[7][1] = 261
+    $readyPoints[7][2] = 0x00DC1E  ; Another variation
     
     For $i = 0 To UBound($readyPoints) - 1
         If BackGround_Pix($readyPoints[$i][0], $readyPoints[$i][1], $readyPoints[$i][2]) Then
@@ -429,7 +444,7 @@ EndFunc
 ; ==============================================================================
 
 UpdateTooltip("🚀 Dungeon Defenders 2 Friend Monitor Started", "SUCCESS")
-UpdateTooltip("🔧 Hotkeys: F5=Pause, F7=Test Pixels, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
+UpdateTooltip("🔧 Hotkeys: F5=Pause, F6=Test Specific, F7=Test All, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
 UpdateTooltip("🔧 Checking game window...", "INFO")
 
 ; Verify window exists and initialize
@@ -521,6 +536,7 @@ HotKeySet("{F5}", "TogglePause")
 HotKeySet("{F9}", "ToggleDebugMode")
 HotKeySet("{F10}", "ShowStats")
 HotKeySet("{F7}", "TestPixelDetection")
+HotKeySet("{F6}", "TestSpecificPixel")
 
 ; ==============================================================================
 ; Enhanced Functions (keeping original functionality)
@@ -564,14 +580,25 @@ EndFunc
 
 Func TestPixelDetection()
     ; Test pixel detection at common points
-    Local $testPoints[6][3] = [
-        [101, 261, 0x00D41E],  ; Friend ready point 1
-        [94, 259, 0x00C81A],   ; Friend ready point 2
-        [517, 313, 0xFFD800],  ; Game end point 1
-        [239, 297, 0xFBD400],  ; Game end point 2
-        [1018, 818, 0xD7D7D7], ; Lose game point
-        [964, 767, 0x1F1826]   ; Ad detection point
-    ]
+    Local $testPoints[6][3]
+    $testPoints[0][0] = 101
+    $testPoints[0][1] = 261
+    $testPoints[0][2] = 0x00DA1E  ; Friend ready point 1
+    $testPoints[1][0] = 94
+    $testPoints[1][1] = 259
+    $testPoints[1][2] = 0x00C81A  ; Friend ready point 2
+    $testPoints[2][0] = 517
+    $testPoints[2][1] = 313
+    $testPoints[2][2] = 0xFFD800  ; Game end point 1
+    $testPoints[3][0] = 239
+    $testPoints[3][1] = 297
+    $testPoints[3][2] = 0xFBD400  ; Game end point 2
+    $testPoints[4][0] = 1018
+    $testPoints[4][1] = 818
+    $testPoints[4][2] = 0xD7D7D7  ; Lose game point
+    $testPoints[5][0] = 964
+    $testPoints[5][1] = 767
+    $testPoints[5][2] = 0x1F1826  ; Ad detection point
     
     Local $testResults = "🔍 PIXEL DETECTION TEST" & @CRLF & @CRLF
     
@@ -595,6 +622,40 @@ Func TestPixelDetection()
     
     MsgBox(64, "Pixel Detection Test", $testResults)
     LogToConsole("Pixel detection test completed")
+EndFunc
+
+Func TestSpecificPixel()
+    ; Test specific pixel at cursor position or common friend ready point
+    Local $testX = 101
+    Local $testY = 261
+    Local $targetColor = 0x00DA1E
+    
+    Local $scaledX = Round($testX * $scaleX)
+    Local $scaledY = Round($testY * $scaleY)
+    
+    Local $handle = WinGetHandle($hWnd)
+    If $handle = 0 Then
+        MsgBox(16, "Error", "Cannot get game window handle")
+        Return
+    EndIf
+    
+    ; Test multiple color variations
+    Local $colorVariations[5] = [0x00DA1E, 0x00D41E, 0x00D91E, 0x00DB1E, 0x00DC1E]
+    Local $results = "🎯 SPECIFIC PIXEL TEST" & @CRLF & @CRLF
+    $results &= "Testing point: (" & $testX & "," & $testY & ")" & @CRLF
+    $results &= "Scaled to: (" & $scaledX & "," & $scaledY & ")" & @CRLF & @CRLF
+    
+    For $i = 0 To UBound($colorVariations) - 1
+        Local $detectedColor = MemoryReadPixel($scaledX, $scaledY, $handle)
+        Local $match = ColorMatches($detectedColor, $colorVariations[$i], $colorTolerance)
+        
+        $results &= "Target: " & $colorVariations[$i] & @CRLF
+        $results &= "Detected: " & $detectedColor & @CRLF
+        $results &= "Match: " & ($match ? "✅ YES" : "❌ NO") & @CRLF & @CRLF
+    Next
+    
+    MsgBox(64, "Specific Pixel Test", $results)
+    LogToConsole("Specific pixel test completed for point (" & $testX & "," & $testY & ")")
 EndFunc
 
 Func _Exit()
