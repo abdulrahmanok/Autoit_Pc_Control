@@ -24,6 +24,12 @@ Global $totalWaitCount = 0
 Global $currentState = "Starting"
 Global $successfulDetections = 0
 
+; Original variables from the original code
+Global $Client_X, $Client_Y, $Paused = False
+Global $AlreadyDropped = False, $Friend2 = False, $Friend3 = False, $Friend_Ready = False
+Global $KeyPressed = False
+Global $x2, $y2, $sColor
+
 ; Cooldown variables
 Global $lastDetectionTime = 0
 Global $cooldownPeriod = 5000 ; 5 seconds in milliseconds
@@ -163,12 +169,19 @@ Func CheckGameEnd()
     EndIf
 
     ; Multiple game end detection points with scaled coordinates
-    Local $endPoints[4][3] = [
-        [517, 313, 0xFFD800],
-        [239, 297, 0xFBD400],
-        [1651, 309, 0xFFD800],
-        [1142, 238, 0xFFD800]
-    ]
+    Local $endPoints[4][3]
+    $endPoints[0][0] = 517
+    $endPoints[0][1] = 313
+    $endPoints[0][2] = 0xFFD800
+    $endPoints[1][0] = 239
+    $endPoints[1][1] = 297
+    $endPoints[1][2] = 0xFBD400
+    $endPoints[2][0] = 1651
+    $endPoints[2][1] = 309
+    $endPoints[2][2] = 0xFFD800
+    $endPoints[3][0] = 1142
+    $endPoints[3][1] = 238
+    $endPoints[3][2] = 0xFFD800
     
     For $i = 0 To UBound($endPoints) - 1
         Local $scaledX, $scaledY
@@ -226,12 +239,19 @@ Func FriendStatus()
     Local $friendReadyDetected = False
 
     ; Multiple detection points for friend ready status
-    Local $readyPoints[4][3] = [
-        [101, 261, 0x00D41E],
-        [94, 259, 0x00C81A],
-        [Round(101 * $scaleX), Round(261 * $scaleY), 0x00D41E],
-        [Round(94 * $scaleX), Round(259 * $scaleY), 0x00C81A]
-    ]
+    Local $readyPoints[4][3]
+    $readyPoints[0][0] = 101
+    $readyPoints[0][1] = 261
+    $readyPoints[0][2] = 0x00D41E
+    $readyPoints[1][0] = 94
+    $readyPoints[1][1] = 259
+    $readyPoints[1][2] = 0x00C81A
+    $readyPoints[2][0] = Round(101 * $scaleX)
+    $readyPoints[2][1] = Round(261 * $scaleY)
+    $readyPoints[2][2] = 0x00D41E
+    $readyPoints[3][0] = Round(94 * $scaleX)
+    $readyPoints[3][1] = Round(259 * $scaleY)
+    $readyPoints[3][2] = 0x00C81A
     
     For $i = 0 To UBound($readyPoints) - 1
         If BackGround_Pix($readyPoints[$i][0], $readyPoints[$i][1], $readyPoints[$i][2]) Then
@@ -274,8 +294,15 @@ Func ExecuteCombatSequence()
     UpdateTooltip("⚡ Executing combat sequence...", "ACTION")
     
     ; Enhanced key sending with verification
-    Local $keys[3] = ['{F11}', '{F6}', '{F11}']
-    Local $delays[3] = [1000, 1500, 500]
+    Local $keys[3]
+    $keys[0] = '{F11}'
+    $keys[1] = '{F6}'
+    $keys[2] = '{F11}'
+    
+    Local $delays[3]
+    $delays[0] = 1000
+    $delays[1] = 1500
+    $delays[2] = 500
     
     For $i = 0 To UBound($keys) - 1
         Local $result = ControlSend($hWnd, '', '', $keys[$i])
@@ -374,10 +401,13 @@ Func CheckLoseGame()
 EndFunc
 
 Func CheckAds()
-    Local $adPoints[2][3] = [
-        [964, 767, 0x1F1826],
-        [771, 401, 0xC642FF]
-    ]
+    Local $adPoints[2][3]
+    $adPoints[0][0] = 964
+    $adPoints[0][1] = 767
+    $adPoints[0][2] = 0x1F1826
+    $adPoints[1][0] = 771
+    $adPoints[1][1] = 401
+    $adPoints[1][2] = 0xC642FF
     
     For $i = 0 To UBound($adPoints) - 1
         Local $scaledX, $scaledY
