@@ -472,7 +472,7 @@ EndFunc
 ; ==============================================================================
 
 UpdateTooltip("🚀 Dungeon Defenders 2 Friend Monitor Started", "SUCCESS")
-UpdateTooltip("🔧 Hotkeys: F4=Analyze Colors, F5=Pause, F6=Test Area, F7=Test All, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
+UpdateTooltip("🔧 Hotkeys: F3=Cursor Test, F4=Analyze Colors, F5=Pause, F6=Test Area, F7=Test All, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
 UpdateTooltip("🔧 Checking game window...", "INFO")
 
 ; Verify window exists and initialize
@@ -566,6 +566,7 @@ HotKeySet("{F10}", "ShowStats")
 HotKeySet("{F7}", "TestPixelDetection")
 HotKeySet("{F6}", "TestSpecificPixel")
 HotKeySet("{F4}", "AnalyzeAreaColors")
+HotKeySet("{F3}", "TestCursorPixel")
 
 ; ==============================================================================
 ; Enhanced Functions (keeping original functionality)
@@ -724,12 +725,33 @@ Func AnalyzeAreaColors()
     
     Local $colorCounts[0][2]  ; [color, count]
     Local $totalPixels = 0
+    Local $greenColors[0]  ; Array to store green-like colors
     
     ; Sample pixels in the area
-    For $x = $scaledStartX To $scaledEndX Step 5
-        For $y = $scaledStartY To $scaledEndY Step 5
+    For $x = $scaledStartX To $scaledEndX Step 3
+        For $y = $scaledStartY To $scaledEndY Step 3
             $totalPixels += 1
             Local $detectedColor = MemoryReadPixel($x, $y, $handle)
+            
+            ; Check if this is a green-like color
+            Local $r = BitAND($detectedColor, 0xFF0000) / 0x10000
+            Local $g = BitAND($detectedColor, 0x00FF00) / 0x100
+            Local $b = BitAND($detectedColor, 0x0000FF)
+            
+            ; If green is dominant, add to green colors array
+            If $g > $r And $g > $b And $g > 150 Then
+                Local $found = False
+                For $i = 0 To UBound($greenColors) - 1
+                    If $greenColors[$i] = $detectedColor Then
+                        $found = True
+                        ExitLoop
+                    EndIf
+                Next
+                If Not $found Then
+                    ReDim $greenColors[UBound($greenColors) + 1]
+                    $greenColors[UBound($greenColors) - 1] = $detectedColor
+                EndIf
+            EndIf
             
             ; Find if color already exists in array
             Local $found = False
@@ -756,7 +778,17 @@ Func AnalyzeAreaColors()
     Local $results = "🎨 COLOR ANALYSIS" & @CRLF & @CRLF
     $results &= "Area: (" & $searchArea[0][0] & "," & $searchArea[0][1] & ") to (" & $searchArea[1][0] & "," & $searchArea[1][1] & ")" & @CRLF
     $results &= "Total pixels sampled: " & $totalPixels & @CRLF & @CRLF
-    $results &= "Most common colors:" & @CRLF
+    
+    ; Show green colors found
+    $results &= "🟢 GREEN COLORS FOUND (" & UBound($greenColors) & "):" & @CRLF
+    For $i = 0 To UBound($greenColors) - 1
+        Local $r = BitAND($greenColors[$i], 0xFF0000) / 0x10000
+        Local $g = BitAND($greenColors[$i], 0x00FF00) / 0x100
+        Local $b = BitAND($greenColors[$i], 0x0000FF)
+        $results &= ($i + 1) & ". " & $greenColors[$i] & " - RGB(" & $r & "," & $g & "," & $b & ")" & @CRLF
+    Next
+    
+    $results &= @CRLF & "Most common colors:" & @CRLF
     
     ; Show top 10 colors
     Local $showCount = Min(10, UBound($colorCounts))
@@ -768,7 +800,53 @@ Func AnalyzeAreaColors()
     Next
     
     MsgBox(64, "Color Analysis", $results)
-    LogToConsole("Color analysis completed - Found " & UBound($colorCounts) & " unique colors")
+    LogToConsole("Color analysis completed - Found " & UBound($colorCounts) & " unique colors, " & UBound($greenColors) & " green colors")
+EndFunc
+
+Func TestCursorPixel()
+    ; Test pixel at current cursor position
+    Local $mousePos = MouseGetPos()
+    Local $handle = WinGetHandle($hWnd)
+    
+    If $handle = 0 Then
+        MsgBox(16, "Error", "Cannot get game window handle")
+        Return
+    EndIf
+    
+    ; Convert screen coordinates to client coordinates
+    Local $tPoint = DllStructCreate("int X;int Y")
+    DllStructSetData($tPoint, "X", $mousePos[0])
+    DllStructSetData($tPoint, "Y", $mousePos[1])
+    
+    If _WinAPI_ScreenToClient($hWnd, $tPoint) Then
+        Local $clientX = DllStructGetData($tPoint, "X")
+        Local $clientY = DllStructGetData($tPoint, "Y")
+        
+        Local $detectedColor = MemoryReadPixel($clientX, $clientY, $handle)
+        Local $r = BitAND($detectedColor, 0xFF0000) / 0x10000
+        Local $g = BitAND($detectedColor, 0x00FF00) / 0x100
+        Local $b = BitAND($detectedColor, 0x0000FF)
+        
+        Local $results = "🎯 CURSOR PIXEL TEST" & @CRLF & @CRLF
+        $results &= "Screen position: (" & $mousePos[0] & "," & $mousePos[1] & ")" & @CRLF
+        $results &= "Client position: (" & $clientX & "," & $clientY & ")" & @CRLF
+        $results &= "Color: " & $detectedColor & @CRLF
+        $results &= "RGB: (" & $r & "," & $g & "," & $b & ")" & @CRLF & @CRLF
+        
+        ; Test against target green colors
+        Local $greenColors[5] = [0x00DA1E, 0x00D41E, 0x00D91E, 0x00DB1E, 0x00DC1E]
+        $results &= "Testing against target colors:" & @CRLF
+        
+        For $i = 0 To UBound($greenColors) - 1
+            Local $match = ColorMatches($detectedColor, $greenColors[$i], $colorTolerance)
+            $results &= "Target " & $greenColors[$i] & ": " & ($match ? "✅ MATCH" : "❌ NO MATCH") & @CRLF
+        Next
+        
+        MsgBox(64, "Cursor Pixel Test", $results)
+        LogToConsole("Cursor pixel test completed at (" & $clientX & "," & $clientY & ") - Color: " & $detectedColor)
+    Else
+        MsgBox(16, "Error", "Failed to convert screen coordinates to client coordinates")
+    EndIf
 EndFunc
 
 Func _Exit()
