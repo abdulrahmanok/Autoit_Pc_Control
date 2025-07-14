@@ -41,7 +41,7 @@ Global $EnableBoostSkill = False
 Global $GoTavern = False
 
 ; Pixel detection tolerance
-Global $colorTolerance = 0x001010 ; Tolerance for color matching
+Global $colorTolerance = 0x000505 ; Reduced tolerance for more accurate detection
 
 ; ==============================================================================
 ; Dynamic Resolution Functions
@@ -149,15 +149,22 @@ Func ColorMatches($color1, $color2, $tolerance)
     
     Local $toleranceValue = BitAND($tolerance, 0xFF)
     
-    ; More flexible tolerance for debugging
+    ; Stricter tolerance for green detection
     If $debugMode Then
-        $toleranceValue = 32 ; Increase tolerance in debug mode
+        $toleranceValue = 8 ; Much stricter tolerance in debug mode
+    Else
+        $toleranceValue = 5 ; Very strict tolerance for production
     EndIf
     
-    Local $match = ($diffR <= $toleranceValue) And ($diffG <= $toleranceValue) And ($diffB <= $toleranceValue)
+    ; For green colors, be especially strict about the green component
+    Local $greenMatch = ($diffG <= 2) ; Green must be very close
+    Local $redMatch = ($diffR <= $toleranceValue)
+    Local $blueMatch = ($diffB <= $toleranceValue)
+    
+    Local $match = $greenMatch And $redMatch And $blueMatch
     
     If $debugMode Then
-        LogToConsole("Color comparison: R(" & $r1 & " vs " & $r2 & ") G(" & $g1 & " vs " & $g2 & ") B(" & $b1 & " vs " & $b2 & ") Tolerance: " & $toleranceValue & " Match: " & ($match ? "Yes" : "No"))
+        LogToConsole("Color comparison: R(" & $r1 & " vs " & $r2 & ") G(" & $g1 & " vs " & $g2 & ") B(" & $b1 & " vs " & $b2 & ") Tolerance: " & $toleranceValue & " GreenMatch: " & ($greenMatch ? "Yes" : "No") & " Match: " & ($match ? "Yes" : "No"))
     EndIf
     
     Return $match
@@ -338,29 +345,51 @@ Func FriendStatus()
     ; Search for green pixel in the specified area with optimized scanning
     Local $searchStep = 3  ; Step size for faster scanning
     Local $handle = WinGetHandle($hWnd)
+    Local $pixelsChecked = 0
     
     For $x = $scaledStartX To $scaledEndX Step $searchStep
         For $y = $scaledStartY To $scaledEndY Step $searchStep
+            $pixelsChecked += 1
             ; Read pixel directly for better performance
             Local $detectedColor = MemoryReadPixel($x, $y, $handle)
             
+            ; Log every 100th pixel in debug mode to see what's being detected
+            If $debugMode And Mod($pixelsChecked, 100) = 0 Then
+                Local $r = BitAND($detectedColor, 0xFF0000) / 0x10000
+                Local $g = BitAND($detectedColor, 0x00FF00) / 0x100
+                Local $b = BitAND($detectedColor, 0x0000FF)
+                LogToConsole("Sample pixel at (" & $x & "," & $y & ") - RGB(" & $r & "," & $g & "," & $b & ") - Hex: " & $detectedColor)
+            EndIf
+            
             For $colorIndex = 0 To UBound($greenColors) - 1
                 If ColorMatches($detectedColor, $greenColors[$colorIndex], $colorTolerance) Then
-                    $friendReadyDetected = True
-                    $successfulDetections += 1
-                    $Friend_Ready = True
-                    $currentState = "Friend Ready"
+                    ; Additional verification: check if it's actually green
+                    Local $r = BitAND($detectedColor, 0xFF0000) / 0x10000
+                    Local $g = BitAND($detectedColor, 0x00FF00) / 0x100
+                    Local $b = BitAND($detectedColor, 0x0000FF)
                     
-                    If $debugMode Then
-                        LogToConsole("✅ Green pixel found at (" & $x & "," & $y & ") with color " & $greenColors[$colorIndex])
+                    ; Green should be the dominant component
+                    If $g > $r And $g > $b And $g > 200 Then
+                        $friendReadyDetected = True
+                        $successfulDetections += 1
+                        $Friend_Ready = True
+                        $currentState = "Friend Ready"
+                        
+                        If $debugMode Then
+                            LogToConsole("✅ Verified green pixel found at (" & $x & "," & $y & ") - RGB(" & $r & "," & $g & "," & $b & ") - Target: " & $greenColors[$colorIndex])
+                        EndIf
+                        
+                        UpdateTooltip("🎉 FRIEND IS READY! Starting combat sequence...", "READY")
+                        ExecuteCombatSequence()
+                        StartCooldown()
+                        UpdateTooltip("🕐 Starting 15-second cooldown period...", "COOLDOWN")
+                        Sleep(3000)
+                        Return
+                    Else
+                        If $debugMode Then
+                            LogToConsole("❌ False positive at (" & $x & "," & $y & ") - RGB(" & $r & "," & $g & "," & $b & ") - Green not dominant")
+                        EndIf
                     EndIf
-                    
-                    UpdateTooltip("🎉 FRIEND IS READY! Starting combat sequence...", "READY")
-                    ExecuteCombatSequence()
-                    StartCooldown()
-                    UpdateTooltip("🕐 Starting 15-second cooldown period...", "COOLDOWN")
-                    Sleep(3000)
-                    Return
                 EndIf
             Next
         Next
@@ -443,7 +472,7 @@ EndFunc
 ; ==============================================================================
 
 UpdateTooltip("🚀 Dungeon Defenders 2 Friend Monitor Started", "SUCCESS")
-UpdateTooltip("🔧 Hotkeys: F5=Pause, F6=Test Specific, F7=Test All, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
+UpdateTooltip("🔧 Hotkeys: F4=Analyze Colors, F5=Pause, F6=Test Area, F7=Test All, F8=Manual, F9=Debug, F10=Stats, END=Exit", "INFO")
 UpdateTooltip("🔧 Checking game window...", "INFO")
 
 ; Verify window exists and initialize
@@ -536,6 +565,7 @@ HotKeySet("{F9}", "ToggleDebugMode")
 HotKeySet("{F10}", "ShowStats")
 HotKeySet("{F7}", "TestPixelDetection")
 HotKeySet("{F6}", "TestSpecificPixel")
+HotKeySet("{F4}", "AnalyzeAreaColors")
 
 ; ==============================================================================
 ; Enhanced Functions (keeping original functionality)
@@ -676,6 +706,69 @@ Func TestSpecificPixel()
     
     MsgBox(64, "Search Area Test", $results)
     LogToConsole("Search area test completed - Found " & $foundPixels & " green pixels")
+EndFunc
+
+Func AnalyzeAreaColors()
+    ; Analyze all colors in the search area to understand what's being detected
+    Local $searchArea[2][2] = [[61, 194], [119, 293]]
+    Local $scaledStartX = Round($searchArea[0][0] * $scaleX)
+    Local $scaledStartY = Round($searchArea[0][1] * $scaleY)
+    Local $scaledEndX = Round($searchArea[1][0] * $scaleX)
+    Local $scaledEndY = Round($searchArea[1][1] * $scaleY)
+    
+    Local $handle = WinGetHandle($hWnd)
+    If $handle = 0 Then
+        MsgBox(16, "Error", "Cannot get game window handle")
+        Return
+    EndIf
+    
+    Local $colorCounts[0][2]  ; [color, count]
+    Local $totalPixels = 0
+    
+    ; Sample pixels in the area
+    For $x = $scaledStartX To $scaledEndX Step 5
+        For $y = $scaledStartY To $scaledEndY Step 5
+            $totalPixels += 1
+            Local $detectedColor = MemoryReadPixel($x, $y, $handle)
+            
+            ; Find if color already exists in array
+            Local $found = False
+            For $i = 0 To UBound($colorCounts) - 1
+                If $colorCounts[$i][0] = $detectedColor Then
+                    $colorCounts[$i][1] += 1
+                    $found = True
+                    ExitLoop
+                EndIf
+            Next
+            
+            ; Add new color if not found
+            If Not $found Then
+                ReDim $colorCounts[UBound($colorCounts) + 1][2]
+                $colorCounts[UBound($colorCounts) - 1][0] = $detectedColor
+                $colorCounts[UBound($colorCounts) - 1][1] = 1
+            EndIf
+        Next
+    Next
+    
+    ; Sort by count (most common first)
+    _ArraySort($colorCounts, 1, 0, 0, 1)
+    
+    Local $results = "🎨 COLOR ANALYSIS" & @CRLF & @CRLF
+    $results &= "Area: (" & $searchArea[0][0] & "," & $searchArea[0][1] & ") to (" & $searchArea[1][0] & "," & $searchArea[1][1] & ")" & @CRLF
+    $results &= "Total pixels sampled: " & $totalPixels & @CRLF & @CRLF
+    $results &= "Most common colors:" & @CRLF
+    
+    ; Show top 10 colors
+    Local $showCount = Min(10, UBound($colorCounts))
+    For $i = 0 To $showCount - 1
+        Local $r = BitAND($colorCounts[$i][0], 0xFF0000) / 0x10000
+        Local $g = BitAND($colorCounts[$i][0], 0x00FF00) / 0x100
+        Local $b = BitAND($colorCounts[$i][0], 0x0000FF)
+        $results &= ($i + 1) & ". " & $colorCounts[$i][0] & " - RGB(" & $r & "," & $g & "," & $b & ") - Count: " & $colorCounts[$i][1] & @CRLF
+    Next
+    
+    MsgBox(64, "Color Analysis", $results)
+    LogToConsole("Color analysis completed - Found " & UBound($colorCounts) & " unique colors")
 EndFunc
 
 Func _Exit()
