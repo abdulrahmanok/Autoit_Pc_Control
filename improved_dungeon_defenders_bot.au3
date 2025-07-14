@@ -321,50 +321,49 @@ EndFunc
 Func FriendStatus()
     Local $friendReadyDetected = False
 
-    ; Multiple detection points for friend ready status with color variations
-    Local $readyPoints[8][3]
-    ; Original points
-    $readyPoints[0][0] = 101
-    $readyPoints[0][1] = 261
-    $readyPoints[0][2] = 0x00DA1E
-    $readyPoints[1][0] = 94
-    $readyPoints[1][1] = 259
-    $readyPoints[1][2] = 0x00C81A
-    ; Scaled points
-    $readyPoints[2][0] = Round(101 * $scaleX)
-    $readyPoints[2][1] = Round(261 * $scaleY)
-    $readyPoints[2][2] = 0x00DA1E
-    $readyPoints[3][0] = Round(94 * $scaleX)
-    $readyPoints[3][1] = Round(259 * $scaleY)
-    $readyPoints[3][2] = 0x00C81A
-    ; Color variations for 0x00DA1E
-    $readyPoints[4][0] = 101
-    $readyPoints[4][1] = 261
-    $readyPoints[4][2] = 0x00D41E  ; Slightly different shade
-    $readyPoints[5][0] = 101
-    $readyPoints[5][1] = 261
-    $readyPoints[5][2] = 0x00D91E  ; Another variation
-    $readyPoints[6][0] = 101
-    $readyPoints[6][1] = 261
-    $readyPoints[6][2] = 0x00DB1E  ; Another variation
-    $readyPoints[7][0] = 101
-    $readyPoints[7][1] = 261
-    $readyPoints[7][2] = 0x00DC1E  ; Another variation
+    ; Search for green pixel in the specified area
+    Local $searchArea[2][2] = [[61, 194], [119, 293]]  ; Search area coordinates
+    Local $greenColors[5] = [0x00DA1E, 0x00D41E, 0x00D91E, 0x00DB1E, 0x00DC1E]  ; Green color variations
     
-    For $i = 0 To UBound($readyPoints) - 1
-        If BackGround_Pix($readyPoints[$i][0], $readyPoints[$i][1], $readyPoints[$i][2]) Then
-            $friendReadyDetected = True
-            $successfulDetections += 1
-            $Friend_Ready = True
-            $currentState = "Friend Ready"
+    ; Scale the search area
+    Local $scaledStartX = Round($searchArea[0][0] * $scaleX)
+    Local $scaledStartY = Round($searchArea[0][1] * $scaleY)
+    Local $scaledEndX = Round($searchArea[1][0] * $scaleX)
+    Local $scaledEndY = Round($searchArea[1][1] * $scaleY)
+    
+    If $debugMode Then
+        LogToConsole("Searching area: (" & $scaledStartX & "," & $scaledStartY & ") to (" & $scaledEndX & "," & $scaledEndY & ")")
+    EndIf
+    
+    ; Search for green pixel in the specified area with optimized scanning
+    Local $searchStep = 3  ; Step size for faster scanning
+    Local $handle = WinGetHandle($hWnd)
+    
+    For $x = $scaledStartX To $scaledEndX Step $searchStep
+        For $y = $scaledStartY To $scaledEndY Step $searchStep
+            ; Read pixel directly for better performance
+            Local $detectedColor = MemoryReadPixel($x, $y, $handle)
             
-            UpdateTooltip("🎉 FRIEND IS READY! Starting combat sequence...", "READY")
-            ExecuteCombatSequence()
-            StartCooldown()
-            UpdateTooltip("🕐 Starting 15-second cooldown period...", "COOLDOWN")
-            Sleep(3000)
-            Return
-        EndIf
+            For $colorIndex = 0 To UBound($greenColors) - 1
+                If ColorMatches($detectedColor, $greenColors[$colorIndex], $colorTolerance) Then
+                    $friendReadyDetected = True
+                    $successfulDetections += 1
+                    $Friend_Ready = True
+                    $currentState = "Friend Ready"
+                    
+                    If $debugMode Then
+                        LogToConsole("✅ Green pixel found at (" & $x & "," & $y & ") with color " & $greenColors[$colorIndex])
+                    EndIf
+                    
+                    UpdateTooltip("🎉 FRIEND IS READY! Starting combat sequence...", "READY")
+                    ExecuteCombatSequence()
+                    StartCooldown()
+                    UpdateTooltip("🕐 Starting 15-second cooldown period...", "COOLDOWN")
+                    Sleep(3000)
+                    Return
+                EndIf
+            Next
+        Next
     Next
     
     If Not $friendReadyDetected Then
@@ -579,26 +578,35 @@ Func ShowStats()
 EndFunc
 
 Func TestPixelDetection()
-    ; Test pixel detection at common points
-    Local $testPoints[6][3]
-    $testPoints[0][0] = 101
-    $testPoints[0][1] = 261
-    $testPoints[0][2] = 0x00DA1E  ; Friend ready point 1
-    $testPoints[1][0] = 94
-    $testPoints[1][1] = 259
-    $testPoints[1][2] = 0x00C81A  ; Friend ready point 2
-    $testPoints[2][0] = 517
-    $testPoints[2][1] = 313
-    $testPoints[2][2] = 0xFFD800  ; Game end point 1
-    $testPoints[3][0] = 239
-    $testPoints[3][1] = 297
-    $testPoints[3][2] = 0xFBD400  ; Game end point 2
-    $testPoints[4][0] = 1018
-    $testPoints[4][1] = 818
-    $testPoints[4][2] = 0xD7D7D7  ; Lose game point
-    $testPoints[5][0] = 964
-    $testPoints[5][1] = 767
-    $testPoints[5][2] = 0x1F1826  ; Ad detection point
+    ; Test pixel detection at common points and search area
+    Local $testPoints[8][3]
+    ; Search area center points
+    $testPoints[0][0] = 90   ; Center of search area X
+    $testPoints[0][1] = 243  ; Center of search area Y
+    $testPoints[0][2] = 0x00DA1E  ; Friend ready area center
+    $testPoints[1][0] = 61   ; Start of search area
+    $testPoints[1][1] = 194  ; Start of search area
+    $testPoints[1][2] = 0x00DA1E  ; Friend ready area start
+    $testPoints[2][0] = 119  ; End of search area
+    $testPoints[2][1] = 293  ; End of search area
+    $testPoints[2][2] = 0x00DA1E  ; Friend ready area end
+    ; Game end points
+    $testPoints[3][0] = 517
+    $testPoints[3][1] = 313
+    $testPoints[3][2] = 0xFFD800  ; Game end point 1
+    $testPoints[4][0] = 239
+    $testPoints[4][1] = 297
+    $testPoints[4][2] = 0xFBD400  ; Game end point 2
+    ; Other detection points
+    $testPoints[5][0] = 1018
+    $testPoints[5][1] = 818
+    $testPoints[5][2] = 0xD7D7D7  ; Lose game point
+    $testPoints[6][0] = 964
+    $testPoints[6][1] = 767
+    $testPoints[6][2] = 0x1F1826  ; Ad detection point
+    $testPoints[7][0] = 771
+    $testPoints[7][1] = 401
+    $testPoints[7][2] = 0xC642FF  ; Ad detection point 2
     
     Local $testResults = "🔍 PIXEL DETECTION TEST" & @CRLF & @CRLF
     
@@ -625,13 +633,15 @@ Func TestPixelDetection()
 EndFunc
 
 Func TestSpecificPixel()
-    ; Test specific pixel at cursor position or common friend ready point
-    Local $testX = 101
-    Local $testY = 261
-    Local $targetColor = 0x00DA1E
+    ; Test the specified search area for green pixels
+    Local $searchArea[2][2] = [[61, 194], [119, 293]]  ; Search area coordinates
+    Local $greenColors[5] = [0x00DA1E, 0x00D41E, 0x00D91E, 0x00DB1E, 0x00DC1E]
     
-    Local $scaledX = Round($testX * $scaleX)
-    Local $scaledY = Round($testY * $scaleY)
+    ; Scale the search area
+    Local $scaledStartX = Round($searchArea[0][0] * $scaleX)
+    Local $scaledStartY = Round($searchArea[0][1] * $scaleY)
+    Local $scaledEndX = Round($searchArea[1][0] * $scaleX)
+    Local $scaledEndY = Round($searchArea[1][1] * $scaleY)
     
     Local $handle = WinGetHandle($hWnd)
     If $handle = 0 Then
@@ -639,23 +649,33 @@ Func TestSpecificPixel()
         Return
     EndIf
     
-    ; Test multiple color variations
-    Local $colorVariations[5] = [0x00DA1E, 0x00D41E, 0x00D91E, 0x00DB1E, 0x00DC1E]
-    Local $results = "🎯 SPECIFIC PIXEL TEST" & @CRLF & @CRLF
-    $results &= "Testing point: (" & $testX & "," & $testY & ")" & @CRLF
-    $results &= "Scaled to: (" & $scaledX & "," & $scaledY & ")" & @CRLF & @CRLF
+    Local $results = "🎯 SEARCH AREA TEST" & @CRLF & @CRLF
+    $results &= "Search area: (" & $searchArea[0][0] & "," & $searchArea[0][1] & ") to (" & $searchArea[1][0] & "," & $searchArea[1][1] & ")" & @CRLF
+    $results &= "Scaled area: (" & $scaledStartX & "," & $scaledStartY & ") to (" & $scaledEndX & "," & $scaledEndY & ")" & @CRLF & @CRLF
     
-    For $i = 0 To UBound($colorVariations) - 1
-        Local $detectedColor = MemoryReadPixel($scaledX, $scaledY, $handle)
-        Local $match = ColorMatches($detectedColor, $colorVariations[$i], $colorTolerance)
-        
-        $results &= "Target: " & $colorVariations[$i] & @CRLF
-        $results &= "Detected: " & $detectedColor & @CRLF
-        $results &= "Match: " & ($match ? "✅ YES" : "❌ NO") & @CRLF & @CRLF
+    Local $foundPixels = 0
+    Local $totalChecked = 0
+    
+    ; Sample some points in the area for testing
+    For $x = $scaledStartX To $scaledEndX Step 10  ; Check every 10 pixels for testing
+        For $y = $scaledStartY To $scaledEndY Step 10
+            $totalChecked += 1
+            Local $detectedColor = MemoryReadPixel($x, $y, $handle)
+            
+            For $colorIndex = 0 To UBound($greenColors) - 1
+                If ColorMatches($detectedColor, $greenColors[$colorIndex], $colorTolerance) Then
+                    $foundPixels += 1
+                    $results &= "✅ Found green at (" & $x & "," & $y & ") - Color: " & $detectedColor & " (Target: " & $greenColors[$colorIndex] & ")" & @CRLF
+                    ExitLoop
+                EndIf
+            Next
+        Next
     Next
     
-    MsgBox(64, "Specific Pixel Test", $results)
-    LogToConsole("Specific pixel test completed for point (" & $testX & "," & $testY & ")")
+    $results &= @CRLF & "Summary: Found " & $foundPixels & " green pixels out of " & $totalChecked & " checked points"
+    
+    MsgBox(64, "Search Area Test", $results)
+    LogToConsole("Search area test completed - Found " & $foundPixels & " green pixels")
 EndFunc
 
 Func _Exit()
